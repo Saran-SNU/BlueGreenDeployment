@@ -47,11 +47,16 @@ pipeline {
                         echo "🧹 Removed existing ${newColor} container"
                     }
 
-                    // Check if port is in use and free it
-                    try {
-                        bat "netstat -ano | findstr :${port} && for /f \"tokens=5\" %i in ('netstat -ano ^| findstr :${port}') do taskkill /PID %i /F || echo Port ${port} is free"
-                    } catch (e) {
-                        echo "Port ${port} is already free"
+                    // Check if port is in use and kill process (Windows-friendly)
+                    def portCheck = bat(script: "netstat -ano | findstr :${port}", returnStdout: true).trim()
+                    if (portCheck) {
+                        portCheck.split('\n').each { line ->
+                            def pid = line.trim().tokenize().last()
+                            bat "taskkill /PID ${pid} /F"
+                            echo "🧹 Killed process using port ${port}: PID ${pid}"
+                        }
+                    } else {
+                        echo "Port ${port} is free ✅"
                     }
 
                     // Run new container
