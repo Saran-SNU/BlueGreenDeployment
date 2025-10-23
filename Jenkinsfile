@@ -51,9 +51,11 @@ pipeline {
                     def portCheck = bat(script: "netstat -ano | findstr :${port}", returnStdout: true).trim()
                     if (portCheck) {
                         portCheck.split('\n').each { line ->
-                            def pid = line.trim().tokenize().last()
-                            bat "taskkill /PID ${pid} /F"
-                            echo "🧹 Killed process using port ${port}: PID ${pid}"
+                            def pid = line.trim().tokenize().last() // get the PID from netstat output
+                            if (pid.isInteger()) {
+                                bat "taskkill /PID ${pid} /F"
+                                echo "🧹 Killed process using port ${port}: PID ${pid}"
+                            }
                         }
                     } else {
                         echo "Port ${port} is free ✅"
