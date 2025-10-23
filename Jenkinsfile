@@ -2,14 +2,14 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "<your-dockerhub-username>/blue-green-app"
+        DOCKER_IMAGE = "sarananbu17/blue-green-app"
         VERSION = "v${BUILD_NUMBER}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/<your-username>/<repo>.git'
+                git branch: 'main', url: 'https://github.com/Saran-SNU/BlueGreenDeployment.git'
             }
         }
 
