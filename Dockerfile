@@ -4,15 +4,15 @@ FROM node:18-alpine
 # Create app directory
 WORKDIR /app
 
-# Copy dependencies and install
+# Copy dependency files and install packages
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
-# Copy app files
+# Copy application files
 COPY . .
 
-# Expose port
+# Expose container port
 EXPOSE 3000
 
-# Start the app
+# Run the app
 CMD ["node", "server.js"]
