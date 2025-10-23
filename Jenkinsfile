@@ -16,7 +16,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE}:${VERSION} ."
+                    bat "docker build -t %DOCKER_IMAGE%:%VERSION% ."
                 }
             }
         }
@@ -25,7 +25,7 @@ pipeline {
             steps {
                 script {
                     withDockerRegistry([credentialsId: 'dockerhub-credentials', url: '']) {
-                        sh "docker push ${DOCKER_IMAGE}:${VERSION}"
+                        bat "docker push %DOCKER_IMAGE%:%VERSION%"
                     }
                 }
             }
@@ -34,21 +34,28 @@ pipeline {
         stage('Deploy to Blue/Green') {
             steps {
                 script {
-                    def activeColor = sh(script: "cat active_color.txt", returnStdout: true).trim()
+                    def activeColor = 'blue'
+                    if (fileExists('active_color.txt')) {
+                        activeColor = readFile('active_color.txt').trim()
+                    }
+
                     def newColor = (activeColor == 'blue') ? 'green' : 'blue'
+                    echo "Active: ${activeColor}, Deploying new version to: ${newColor}"
 
-                    echo "Active: ${activeColor}, Deploying to: ${newColor}"
+                    // Stop existing container if it exists
+                    bat "docker ps -a -q -f name=${newColor} && docker rm -f ${newColor} || echo No ${newColor} container"
 
-                    // Run container on new environment
-                    sh "docker rm -f ${newColor} || true"
-                    sh "docker run -d -p 8080:3000 --name ${newColor} ${DOCKER_IMAGE}:${VERSION}"
+                    // Run new container on a different port
+                    def port = (newColor == 'blue') ? 8081 : 8082
+                    bat "docker run -d -p ${port}:3000 --name ${newColor} ${DOCKER_IMAGE}:${VERSION}"
 
-                    // Health check
-                    sh "sleep 10 && curl -f http://localhost:8080 || exit 1"
+                    // Wait and test new deployment
+                    bat "ping -n 10 127.0.0.1 >nul"
+                    bat "curl http://localhost:${port} || exit /b 1"
 
-                    // Switch traffic
-                    sh "echo ${newColor} > active_color.txt"
-                    echo "Traffic switched to ${newColor}"
+                    // If OK, switch traffic
+                    writeFile file: 'active_color.txt', text: newColor
+                    echo "✅ Switched active environment to ${newColor}"
                 }
             }
         }
@@ -56,10 +63,10 @@ pipeline {
         stage('Cleanup Old Environment') {
             steps {
                 script {
-                    def activeColor = sh(script: "cat active_color.txt", returnStdout: true).trim()
+                    def activeColor = readFile('active_color.txt').trim()
                     def oldColor = (activeColor == 'blue') ? 'green' : 'blue'
-                    sh "docker rm -f ${oldColor} || true"
-                    echo "${oldColor} environment cleaned up."
+                    bat "docker ps -a -q -f name=${oldColor} && docker rm -f ${oldColor} || echo No old container"
+                    echo "🧹 Cleaned up old ${oldColor} environment."
                 }
             }
         }
