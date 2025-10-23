@@ -16,7 +16,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    bat "docker build -t ${DOCKER_IMAGE}:${VERSION} ."
+                    bat "docker build --no-cache -t ${DOCKER_IMAGE}:${VERSION} ."
                 }
             }
         }
@@ -36,24 +36,36 @@ pipeline {
                 script {
                     def activeColor = fileExists('active_color.txt') ? readFile('active_color.txt').trim() : 'blue'
                     def newColor = (activeColor == 'blue') ? 'green' : 'blue'
-
-                    echo "🔄 Active: ${activeColor}, deploying new version to: ${newColor}"
-
-                    // Stop existing container if it exists
-                    bat "docker ps -a -q -f name=${newColor} && docker rm -f ${newColor} || echo No ${newColor} container"
-
-                    // Assign new port based on color
                     def port = (newColor == 'blue') ? 8081 : 8082
 
-                    // Run the new container
+                    echo "🔄 Active: ${activeColor}, deploying new version to: ${newColor} on port ${port}"
+
+                    // Stop and remove existing container if it exists
+                    def existing = bat(script: "docker ps -a -q -f name=${newColor}", returnStdout: true).trim()
+                    if (existing) {
+                        bat "docker rm -f ${newColor}"
+                        echo "🧹 Removed existing ${newColor} container"
+                    }
+
+                    // Check if port is in use and free it
+                    try {
+                        bat "netstat -ano | findstr :${port} && for /f \"tokens=5\" %i in ('netstat -ano ^| findstr :${port}') do taskkill /PID %i /F || echo Port ${port} is free"
+                    } catch (e) {
+                        echo "Port ${port} is already free"
+                    }
+
+                    // Run new container
                     bat "docker run -d -p ${port}:3000 --name ${newColor} ${DOCKER_IMAGE}:${VERSION}"
 
-                    // Wait and test deployment
+                    // Wait for container to start
                     echo "⏳ Waiting for container to start..."
                     bat "ping -n 10 127.0.0.1 >nul"
 
-                    echo "🔍 Testing new deployment on port ${port}..."
-                    bat "curl http://localhost:${port} || exit /b 1"
+                    // Test deployment
+                    def response = bat(script: "curl -s -o nul -w \"%{http_code}\" http://localhost:${port}", returnStdout: true).trim()
+                    if (response != "200") {
+                        error "❌ Deployment failed on ${newColor}. HTTP code: ${response}"
+                    }
 
                     // Update active color
                     writeFile file: 'active_color.txt', text: newColor
@@ -67,9 +79,14 @@ pipeline {
                 script {
                     def activeColor = readFile('active_color.txt').trim()
                     def oldColor = (activeColor == 'blue') ? 'green' : 'blue'
-
-                    bat "docker ps -a -q -f name=${oldColor} && docker rm -f ${oldColor} || echo No old container"
-                    echo "🧹 Cleaned up old ${oldColor} environment."
+                    
+                    def existing = bat(script: "docker ps -a -q -f name=${oldColor}", returnStdout: true).trim()
+                    if (existing) {
+                        bat "docker rm -f ${oldColor}"
+                        echo "🧹 Cleaned up old ${oldColor} environment."
+                    } else {
+                        echo "No old container to clean"
+                    }
                 }
             }
         }
