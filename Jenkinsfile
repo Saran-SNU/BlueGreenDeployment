@@ -53,7 +53,7 @@ pipeline {
             }
         }
 
-        stage('Cleanp Old Environment') {
+        stage('Cleanup Old Environment') {
             steps {
                 script {
                     def activeColor = sh(script: "cat active_color.txt", returnStdout: true).trim()
